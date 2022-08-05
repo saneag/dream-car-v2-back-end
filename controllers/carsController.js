@@ -64,6 +64,7 @@ export const setCar = async (req, res) => {
         })
 
         const cars = await doc.save()
+        console.log(cars)
 
         res.json(cars)
     }

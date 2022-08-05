@@ -2,10 +2,10 @@
   "name": "cars-v2",
   "version": "1.0.0",
   "description": "cars fullstack",
-  "main": "app.js",
+  "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node app.js"
+    "start": "node index.js"
   },
   "keywords": [
     "cars",

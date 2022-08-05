@@ -13,7 +13,7 @@ export const getAll = async (req, res) => {
             .limit(limit).skip(limit * (page - 1))
             .sort({ [sortBy]: sortOrder, _id: sortOrder })
             .or([{ brand: { $regex: search, $options: 'i' } }, { model: { $regex: search, $options: 'i' } }])
-
+        console.log(cars)
         res.json({ cars, totalItems })
     }
     catch (err) {
@@ -64,7 +64,6 @@ export const setCar = async (req, res) => {
         })
 
         const cars = await doc.save()
-        console.log(cars)
 
         res.json(cars)
     }

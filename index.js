@@ -3,6 +3,9 @@ import fs from 'fs';
 import mongoose from 'mongoose';
 import multer from 'multer';
 import cors from 'cors';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 import {
     createCarValidation,
@@ -57,7 +60,7 @@ app.get('/auth/me', checkAuth, UserController.getUser);
 
 app.post('/upload', checkAuth, upload.single('image'), (req, res) => {
     res.json({
-        url: `/uploads/${req.file.originalname}`,
+        url: `uploads/${req.file.originalname}`,
     });
 });
 

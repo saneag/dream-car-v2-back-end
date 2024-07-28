@@ -1,10 +1,20 @@
-import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 
 import UserModel from '../models/User.js';
 
 export const register = async (req, res) => {
     try {
+        const userEmail = req.body.email;
+
+        const existingUser = await UserModel.findOne({ email: userEmail });
+
+        if (existingUser) {
+            return res
+                .status(400)
+                .json({ message: 'User with this email already exists' });
+        }
+
         const password = req.body.password;
         const salt = await bcrypt.genSalt(10);
         const hash = await bcrypt.hash(password, salt);

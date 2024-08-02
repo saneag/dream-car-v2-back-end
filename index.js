@@ -1,19 +1,19 @@
+import cors from 'cors';
+import dotenv from 'dotenv';
 import express from 'express';
 import fs from 'fs';
 import mongoose from 'mongoose';
 import multer from 'multer';
-import cors from 'cors';
-import dotenv from 'dotenv';
 
 dotenv.config();
 
+import { CarsController, UserController } from './controllers/index.js';
+import { checkAuth, handleValidationErrors } from './utils/index.js';
 import {
     createCarValidation,
     loginValidation,
     registerValidation,
 } from './validations.js';
-import { UserController, CarsController } from './controllers/index.js';
-import { handleValidationErrors, checkAuth } from './utils/index.js';
 
 mongoose
     .connect(process.env.MONGO_URI)

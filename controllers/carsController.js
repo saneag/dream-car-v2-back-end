@@ -1,115 +1,66 @@
-import Cars from '../models/Cars.js';
-import UserModel from '../models/User.js'
+import { pool, newId, carFields, quote } from '../db.js';
 
 export const getAll = async (req, res) => {
     try {
-        const totalItems = (await Cars.find()).length
-        const limit = req.query.limit
-        const page = req.query.page
-        const sortBy = req.query.sortBy
-        const sortOrder = req.query.sortOrder
-        const search = req.query.search || ''
-        const cars = await Cars.find()
-            .limit(limit).skip(limit * (page - 1))
-            .sort({ [sortBy]: sortOrder, _id: sortOrder })
-            .or([{ brand: { $regex: search, $options: 'i' } }, { model: { $regex: search, $options: 'i' } }])
-
-        res.json({ cars, totalItems })
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 12));
+        const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+        const sort = ['brand', 'year', 'engine_power', 'price'].includes(req.query.sortBy) ? req.query.sortBy : 'brand';
+        const direction = String(req.query.sortOrder) === '-1' ? 'DESC' : 'ASC';
+        const search = String(req.query.search || '');
+        const { rows: [{ count }] } = await pool.query('SELECT count(*) FROM cars');
+        const { rows: cars } = await pool.query(
+            `SELECT * FROM cars WHERE strpos(lower(brand),lower($1))>0 OR strpos(lower(model),lower($1))>0 ORDER BY ${quote(sort)} ${direction}, _id ${direction} LIMIT $2 OFFSET $3`,
+            [search, limit, limit * (page - 1)]);
+        res.json({ cars, totalItems: Number(count) });
+    } catch {
+        res.status(500).json({ message: 'Could not get cars' });
     }
-    catch (err) {
-        console.log('Could not get cars')
-        res.status(500).json({ message: err.message })
-    }
-}
+};
 
 export const getOne = async (req, res) => {
     try {
-        const carId = await req.params.id
-
-        Cars.findOne({ _id: carId }, (err, doc) => {
-            if (err) {
-                console.log('Could not get car')
-                return res.status(500).json({ message: err.message })
-            }
-
-            if (!doc) {
-                return res.status(404).json({ message: 'Car not found' })
-            }
-
-            res.json(doc)
-        })
+        const { rows: [car] } = await pool.query('SELECT * FROM cars WHERE _id=$1', [req.params.id]);
+        if (!car) return res.status(404).json({ message: 'Car not found' });
+        res.json(car);
+    } catch {
+        res.status(500).json({ message: 'Could not get car' });
     }
-    catch (err) {
-        console.log('Could not get cars')
-        res.status(500).json({ message: err.message })
-    }
-}
+};
 
 export const setCar = async (req, res) => {
     try {
-        const user = await UserModel.findOne({ _id: req.userId })
-        const doc = new Cars({
-            brand: req.body.brand,
-            model: req.body.model,
-            year: req.body.year,
-            fuel_type: req.body.fuel_type,
-            engine_capacity: req.body.engine_capacity,
-            engine_power: req.body.engine_power,
-            traction_type: req.body.traction_type,
-            gearbox_type: req.body.gearbox_type,
-            price: req.body.price,
-            imageUrl: req.body.imageUrl,
-            added_by: user.name,
-            added_by_id: user._id
-        })
-
-        const cars = await doc.save()
-
-        res.json(cars)
+        const { rows: [user] } = await pool.query('SELECT name FROM users WHERE _id=$1', [req.userId]);
+        if (!user) return res.status(403).json({ message: 'Access denied' });
+        const data = { ...req.body, added_by: user.name, added_by_id: req.userId };
+        const { rows: [car] } = await pool.query(
+            `INSERT INTO cars (_id, ${carFields.map(quote).join(',')}) VALUES (${carFields.map((_, i) => '$' + (i+2)).reduce((s, p) => s + ',' + p, '$1')}) RETURNING *`,
+            [newId(), ...carFields.map(field => data[field])]);
+        res.json(car);
+    } catch {
+        res.status(500).json({ message: 'Could not create car' });
     }
-    catch (err) {
-        console.log(err)
-        res.status(500).json({ message: 'Could not create car' })
-    }
-}
+};
 
 export const updateCar = async (req, res) => {
     try {
-        const carId = await req.params.id
-
-        const car = await Cars.findOneAndUpdate({ _id: carId }, req.body, { new: true })
-
-        res.json({
-            success: true,
-        })
-
+        const fields = carFields.filter(field => !['added_by', 'added_by_id'].includes(field) && Object.hasOwn(req.body, field));
+        if (!fields.length) return res.status(400).json({ message: 'No car fields supplied' });
+        const result = await pool.query(
+            `UPDATE cars SET ${fields.map((field, i) => quote(field) + '=$' + (i+2)).join(',')} WHERE _id=$1`,
+            [req.params.id, ...fields.map(field => req.body[field])]);
+        if (!result.rowCount) return res.status(404).json({ message: 'Car not found' });
+        res.json({ success: true });
+    } catch {
+        res.status(500).json({ message: 'Could not update car' });
     }
-    catch (err) {
-        console.log('Could not update car')
-    }
-}
+};
 
 export const deleteCar = async (req, res) => {
     try {
-        const carId = await req.params.id
-
-        Cars.findOneAndDelete({ _id: carId }, (err, car) => {
-            if (err) {
-                console.log('Could not delete car')
-                return res.status(500).json({ message: err.message })
-            }
-
-            if (!car) {
-                return res.status(404).json({ message: 'Car not found' })
-            }
-
-            res.json({
-                success: true,
-            })
-        })
+        const result = await pool.query('DELETE FROM cars WHERE _id=$1', [req.params.id]);
+        if (!result.rowCount) return res.status(404).json({ message: 'Car not found' });
+        res.json({ success: true });
+    } catch {
+        res.status(500).json({ message: 'Could not delete car' });
     }
-    catch (err) {
-        console.log('Could not get cars')
-        res.status(500).json({ message: err.message })
-    }
-}
+};

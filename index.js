@@ -2,7 +2,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
 import fs from 'fs';
-import mongoose from 'mongoose';
+import { pool } from './db.js';
 import multer from 'multer';
 
 dotenv.config();
@@ -15,16 +15,16 @@ import {
     registerValidation,
 } from './validations.js';
 
-mongoose
-    .connect(process.env.MONGO_URI)
-    .then((res) => {
-        console.log('db ok');
-    })
-    .catch((err) => {
-        console.log(err);
-    });
-
 const app = express();
+
+app.get('/health', async (_, res) => {
+    try {
+        await pool.query('SELECT 1');
+        res.json({ status: 'ok' });
+    } catch {
+        res.status(503).json({ status: 'unavailable' });
+    }
+});
 
 const storage = multer.diskStorage({
     destination: (_, __, cb) => {
@@ -83,10 +83,12 @@ app.patch(
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, (err) => {
+if (process.env.NODE_ENV !== 'test') app.listen(PORT, (err) => {
     if (err) {
         return console.log(err);
     }
 
     console.log('Server is listening on port 5000');
 });
+
+export default app;

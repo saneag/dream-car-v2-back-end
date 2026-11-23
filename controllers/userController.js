@@ -1,100 +1,42 @@
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { pool, newId } from '../db.js';
 
-import UserModel from '../models/User.js';
+const publicUser = ({ passwordHash, ...user }) => user;
+const withToken = (user) => ({ ...publicUser(user),
+    token: jwt.sign({ _id: user._id }, process.env.JWT_SECRET, { expiresIn: '30d' }) });
 
 export const register = async (req, res) => {
     try {
-        const userEmail = req.body.email;
-
-        const existingUser = await UserModel.findOne({ email: userEmail });
-
-        if (existingUser) {
-            return res
-                .status(400)
-                .json({ message: 'User with this email already exists' });
-        }
-
-        const password = req.body.password;
-        const salt = await bcrypt.genSalt(10);
-        const hash = await bcrypt.hash(password, salt);
-
-        const doc = new UserModel({
-            email: req.body.email,
-            name: req.body.name,
-            avatarUrl: req.body.avatarUrl,
-            passwordHash: hash,
-            role: 'user',
-        });
-
-        const user = await doc.save();
-
-        const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET, {
-            expiresIn: '30d',
-        });
-
-        const { passwordHash, ...userData } = user._doc;
-
-        res.json({
-            ...userData,
-            token,
-        });
+        const hash = await bcrypt.hash(req.body.password, 10);
+        const { rows: [user] } = await pool.query(
+            'INSERT INTO users (_id, email, name, "avatarUrl", "passwordHash", role) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+            [newId(), req.body.email, req.body.name, req.body.avatarUrl || null, hash, 'user']);
+        res.json(withToken(user));
     } catch (err) {
-        console.log(err);
+        if (err.code === '23505') return res.status(400).json({ message: 'User with this email already exists' });
         res.status(500).json({ message: 'Could not register user' });
     }
 };
 
 export const login = async (req, res) => {
     try {
-        const user = await UserModel.findOne({ email: req.body.email });
-
-        if (!user) {
-            return res
-                .status(404)
-                .json({ message: 'Invalid email or password' });
+        const { rows: [user] } = await pool.query('SELECT * FROM users WHERE email=$1', [req.body.email]);
+        if (!user || !await bcrypt.compare(req.body.password, user.passwordHash)) {
+            return res.status(400).json({ message: 'Invalid email or password' });
         }
-
-        const isValidPass = await bcrypt.compare(
-            req.body.password,
-            user._doc.passwordHash
-        );
-
-        if (!isValidPass) {
-            return res
-                .status(400)
-                .json({ message: 'Invalid email or password' });
-        }
-
-        const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET, {
-            expiresIn: '30d',
-        });
-
-        const { passwordHash, ...userData } = user._doc;
-
-        res.json({
-            ...userData,
-            token,
-        });
-    } catch (err) {
-        console.log(err);
-        res.status(500).json({ message: 'Could not register user' });
+        res.json(withToken(user));
+    } catch {
+        res.status(500).json({ message: 'Could not sign in' });
     }
 };
 
 export const getUser = async (req, res) => {
     try {
-        const user = await UserModel.findById(req.userId);
-
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-
-        const { passwordHash, ...userData } = user._doc;
-
-        res.json(userData);
-    } catch (err) {
-        console.log(err);
-        res.status(500).json({ message: 'Acces denied' });
+        const { rows: [user] } = await pool.query('SELECT * FROM users WHERE _id=$1', [req.userId]);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+        res.json(publicUser(user));
+    } catch {
+        res.status(500).json({ message: 'Access denied' });
     }
 };
